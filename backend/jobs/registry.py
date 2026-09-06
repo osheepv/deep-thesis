@@ -238,11 +238,16 @@ class JobRegistry:
             raise JobRegistryError("作业租约不属于当前 Worker")
         lease = _to_iso(_utc_now_dt() + timedelta(seconds=max(10, lease_seconds)))
         with self._lock:
-            self._db.execute(
-                "UPDATE t_job_run SET lease_expires_at=?, updated_at=? WHERE job_id=?",
-                (lease, _utc_now(), job_id),
+            now = _utc_now()
+            cursor = self._db.execute(
+                "UPDATE t_job_run SET lease_expires_at=?, updated_at=? WHERE job_id=? "
+                "AND lease_owner=? AND status IN (?, ?) AND lease_expires_at>?",
+                (lease, now, job_id, worker_id, JobStatus.RUNNING.value,
+                 JobStatus.CANCEL_REQUESTED.value, now),
             )
             self._db.commit()
+            if cursor.rowcount != 1:
+                raise JobRegistryError("作业租约已失效，不能续租")
         return self.get_by_id(job_id)
 
     def complete(self, job_id: str, worker_id: str, result: dict[str, Any]) -> JobRun:
@@ -306,17 +311,15 @@ class JobRegistry:
         job = self.get(task_id, job_id)
         if job.status in TERMINAL_JOB_STATUSES:
             return job
-        status = (
-            JobStatus.CANCELLED
-            if job.status == JobStatus.PENDING
-            else JobStatus.CANCEL_REQUESTED
-        )
-        finished = _utc_now() if status == JobStatus.CANCELLED else ""
         with self._lock:
             self._db.execute(
-                "UPDATE t_job_run SET status=?, cancel_requested=1, finished_at=?, updated_at=? "
-                "WHERE task_id=? AND job_id=?",
-                (status.value, finished, _utc_now(), task_id, job_id),
+                "UPDATE t_job_run SET status=CASE WHEN status=? THEN ? ELSE ? END, "
+                "cancel_requested=1, finished_at=CASE WHEN status=? THEN ? ELSE '' END, "
+                "updated_at=? WHERE task_id=? AND job_id=? AND status IN (?, ?, ?)",
+                (JobStatus.PENDING.value, JobStatus.CANCELLED.value,
+                 JobStatus.CANCEL_REQUESTED.value, JobStatus.PENDING.value,
+                 _utc_now(), _utc_now(), task_id, job_id, JobStatus.PENDING.value,
+                 JobStatus.RUNNING.value, JobStatus.CANCEL_REQUESTED.value),
             )
             self._db.commit()
         return self.get(task_id, job_id)
@@ -326,19 +329,26 @@ class JobRegistry:
         if job.status not in {JobStatus.FAILED, JobStatus.CANCELLED}:
             raise JobRegistryError("只有 FAILED/CANCELLED 作业可以人工重试")
         with self._lock:
-            self._db.execute(
+            cursor = self._db.execute(
                 "UPDATE t_job_run SET status=?, error='', result='{}', attempt=0, "
                 "cancel_requested=0, lease_owner='', lease_expires_at='', not_before='', "
-                "started_at='', finished_at='', updated_at=? WHERE task_id=? AND job_id=?",
-                (JobStatus.PENDING.value, _utc_now(), task_id, job_id),
+                "started_at='', finished_at='', updated_at=? WHERE task_id=? AND job_id=? "
+                "AND status IN (?, ?) AND updated_at=?",
+                (JobStatus.PENDING.value, _utc_now(), task_id, job_id,
+                 JobStatus.FAILED.value, JobStatus.CANCELLED.value, job.updated_at),
             )
             self._db.commit()
+            if cursor.rowcount != 1:
+                raise JobRegistryError("作业状态已变化，请刷新后重试")
         return self.get(task_id, job_id)
 
     def raise_if_cancelled(self, job_id: str) -> None:
         job = self.get_by_id(job_id)
         if job.cancel_requested or job.status == JobStatus.CANCEL_REQUESTED:
             raise JobCancelledError(f"作业已取消: {job_id}")
+
+    def assert_active_lease(self, job_id: str, worker_id: str) -> None:
+        self._assert_lease(self.get_by_id(job_id), worker_id)
 
     def assert_budget(
         self,
@@ -416,7 +426,7 @@ class JobRegistry:
     def _assert_lease(job: JobRun, worker_id: str) -> None:
         if job.lease_owner != worker_id or job.status not in {
             JobStatus.RUNNING, JobStatus.CANCEL_REQUESTED
-        }:
+        } or not job.lease_expires_at or job.lease_expires_at <= _utc_now():
             raise JobRegistryError("作业租约不属于当前 Worker")
 
     @staticmethod

@@ -13,6 +13,7 @@ from .registry import (
     JobBudgetExceededError,
     JobCancelledError,
     JobRegistry,
+    JobRegistryError,
     PermanentJobError,
 )
 from .runtime import JobRuntime, Pricing, job_runtime_context
@@ -112,7 +113,12 @@ class JobWorker:
 
     def _loop(self) -> None:
         while not self._stop.is_set():
-            job = self.run_once()
+            try:
+                job = self.run_once()
+            except JobRegistryError:
+                logger.exception("Worker 租约或作业状态已变化，继续轮询")
+                self._stop.wait(self.poll_interval)
+                continue
             if job is None:
                 self._stop.wait(self.poll_interval)
 

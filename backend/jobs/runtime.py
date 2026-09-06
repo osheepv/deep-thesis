@@ -39,8 +39,10 @@ class JobRuntime:
 
     def check_cancelled(self) -> None:
         self.registry.raise_if_cancelled(self.job_id)
+        self.registry.assert_active_lease(self.job_id, self.worker_id)
 
     def before_llm(self, estimated_input_tokens: int, max_output_tokens: int) -> None:
+        self.check_cancelled()
         estimated_cost = self.pricing.calculate(
             estimated_input_tokens, max_output_tokens
         )
