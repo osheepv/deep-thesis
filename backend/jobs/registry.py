@@ -6,6 +6,7 @@ import json
 import sqlite3
 import threading
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -101,6 +102,17 @@ class JobRegistry:
             """
         )
         self._db.commit()
+
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                columns = {row[1] for row in self._db.execute("PRAGMA table_info(t_job_run)")}
+                if "lease_token" not in columns:
+                    self._db.execute("ALTER TABLE t_job_run ADD COLUMN lease_token TEXT NOT NULL DEFAULT ''")
+                self._db.commit()
+            except Exception:
+                self._db.rollback()
+                raise
 
     def create(
         self,
@@ -207,11 +219,11 @@ class JobRegistry:
                     return None
                 job_id = str(row["job_id"])
                 self._db.execute(
-                    "UPDATE t_job_run SET status=?, attempt=attempt+1, lease_owner=?, "
+                    "UPDATE t_job_run SET status=?, attempt=attempt+1, lease_owner=?, lease_token=?, "
                     "lease_expires_at=?, started_at=CASE WHEN started_at='' THEN ? ELSE started_at END, "
                     "updated_at=? WHERE job_id=? AND status=?",
                     (
-                        JobStatus.RUNNING.value, worker_id, lease_expires, now, now,
+                        JobStatus.RUNNING.value, worker_id, uuid.uuid4().hex, lease_expires, now, now,
                         job_id, JobStatus.PENDING.value,
                     ),
                 )
@@ -230,7 +242,8 @@ class JobRegistry:
             raise JobRegistryError(f"作业不存在: {job_id}")
         return self._row_to_job(row)
 
-    def heartbeat(self, job_id: str, worker_id: str, *, lease_seconds: int = 60) -> JobRun:
+    def heartbeat(self, job_id: str, worker_id: str, *, lease_seconds: int = 60,
+                  lease_token: str | None = None) -> JobRun:
         job = self.get_by_id(job_id)
         if job.lease_owner != worker_id or job.status not in {
             JobStatus.RUNNING, JobStatus.CANCEL_REQUESTED
@@ -241,21 +254,23 @@ class JobRegistry:
             now = _utc_now()
             cursor = self._db.execute(
                 "UPDATE t_job_run SET lease_expires_at=?, updated_at=? WHERE job_id=? "
-                "AND lease_owner=? AND status IN (?, ?) AND lease_expires_at>?",
+                "AND lease_owner=? AND status IN (?, ?) AND lease_expires_at>? "
+                "AND (? IS NULL OR lease_token=?)",
                 (lease, now, job_id, worker_id, JobStatus.RUNNING.value,
-                 JobStatus.CANCEL_REQUESTED.value, now),
+                 JobStatus.CANCEL_REQUESTED.value, now, lease_token, lease_token),
             )
             self._db.commit()
             if cursor.rowcount != 1:
                 raise JobRegistryError("作业租约已失效，不能续租")
         return self.get_by_id(job_id)
 
-    def complete(self, job_id: str, worker_id: str, result: dict[str, Any]) -> JobRun:
+    def complete(self, job_id: str, worker_id: str, result: dict[str, Any], *,
+                 lease_token: str | None = None) -> JobRun:
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
                 job = self.get_by_id(job_id)
-                self._assert_lease(job, worker_id)
+                self._assert_lease(job, worker_id, lease_token)
                 cancelled = job.cancel_requested or job.status == JobStatus.CANCEL_REQUESTED
                 status = JobStatus.CANCELLED if cancelled else JobStatus.SUCCEEDED
                 self._db.execute(
@@ -275,12 +290,13 @@ class JobRegistry:
     def fail(
         self, job_id: str, worker_id: str, error: str, *, retryable: bool = True,
         retry_delay_seconds: int = 2,
+        lease_token: str | None = None,
     ) -> JobRun:
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
                 job = self.get_by_id(job_id)
-                self._assert_lease(job, worker_id)
+                self._assert_lease(job, worker_id, lease_token)
                 if job.cancel_requested or job.status == JobStatus.CANCEL_REQUESTED:
                     status = JobStatus.CANCELLED
                     not_before = ""
@@ -347,8 +363,27 @@ class JobRegistry:
         if job.cancel_requested or job.status == JobStatus.CANCEL_REQUESTED:
             raise JobCancelledError(f"作业已取消: {job_id}")
 
-    def assert_active_lease(self, job_id: str, worker_id: str) -> None:
-        self._assert_lease(self.get_by_id(job_id), worker_id)
+    def assert_active_lease(self, job_id: str, worker_id: str, lease_token: str | None = None) -> None:
+        job = self.get_by_id(job_id)
+        self._assert_lease(job, worker_id)
+        if lease_token is not None and job.lease_token != lease_token:
+            raise JobRegistryError("作业执行凭证已失效")
+
+    @contextmanager
+    def write_fence(self, job_id: str, worker_id: str, lease_token: str, task_id: str):
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                job = self.get_by_id(job_id)
+                self.assert_active_lease(job_id, worker_id, lease_token)
+                if job.task_id != task_id:
+                    raise JobRegistryError("后台作业不能写入其他任务")
+                self.raise_if_cancelled(job_id)
+                yield
+                self._db.commit()
+            except BaseException:
+                self._db.rollback()
+                raise
 
     def assert_budget(
         self,
@@ -423,11 +458,13 @@ class JobRegistry:
         return len(rows)
 
     @staticmethod
-    def _assert_lease(job: JobRun, worker_id: str) -> None:
+    def _assert_lease(job: JobRun, worker_id: str, lease_token: str | None = None) -> None:
         if job.lease_owner != worker_id or job.status not in {
             JobStatus.RUNNING, JobStatus.CANCEL_REQUESTED
         } or not job.lease_expires_at or job.lease_expires_at <= _utc_now():
             raise JobRegistryError("作业租约不属于当前 Worker")
+        if lease_token is not None and job.lease_token != lease_token:
+            raise JobRegistryError("作业执行凭证已失效")
 
     @staticmethod
     def _row_to_job(row: sqlite3.Row) -> JobRun:
@@ -442,6 +479,7 @@ class JobRegistry:
             cost_budget=float(row["cost_budget"]), input_tokens=int(row["input_tokens"]),
             output_tokens=int(row["output_tokens"]), cost_used=float(row["cost_used"]),
             lease_owner=str(row["lease_owner"]), lease_expires_at=str(row["lease_expires_at"]),
+            lease_token=str(row["lease_token"]),
             not_before=str(row["not_before"]), cancel_requested=bool(row["cancel_requested"]),
             created_at=str(row["created_at"]), started_at=str(row["started_at"]),
             finished_at=str(row["finished_at"]), updated_at=str(row["updated_at"]),

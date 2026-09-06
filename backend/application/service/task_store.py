@@ -10,6 +10,7 @@ import json
 import os
 import sqlite3
 import threading
+from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -18,6 +19,7 @@ from common.resume import (
     read_revision,
     workspace_content,
 )
+from jobs.runtime import job_write_fence
 
 
 class TaskRecord:
@@ -167,9 +169,9 @@ class TaskStore:
         return os.path.join(base, "task_store.db")
 
     def put(self, rec: TaskRecord) -> TaskRecord:
-        with self._lock:
+        with job_write_fence(rec.task_id), self._lock:
             if self._db is None:
-                self._tasks[rec.task_id] = rec
+                self._tasks[rec.task_id] = deepcopy(rec)
             else:
                 payload = json.dumps(rec.to_dict(), ensure_ascii=False)
                 now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -186,7 +188,7 @@ class TaskStore:
     def get(self, task_id: str) -> Optional[TaskRecord]:
         with self._lock:
             if self._db is None:
-                return self._tasks.get(task_id)
+                return deepcopy(self._tasks.get(task_id))
             row = self._db.execute(
                 "SELECT payload FROM t_task_store WHERE task_id=?", (task_id,)
             ).fetchone()
@@ -201,7 +203,7 @@ class TaskStore:
         """全部任务（会话列表）。"""
         with self._lock:
             if self._db is None:
-                return list(self._tasks.values())
+                return deepcopy(list(self._tasks.values()))
             rows = self._db.execute(
                 "SELECT payload FROM t_task_store ORDER BY created_at"
             ).fetchall()
@@ -215,7 +217,7 @@ class TaskStore:
 
     def delete(self, task_id: str) -> bool:
         """删除任务。"""
-        with self._lock:
+        with job_write_fence(task_id), self._lock:
             if self._db is None:
                 return self._tasks.pop(task_id, None) is not None
             cur = self._db.execute(

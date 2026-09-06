@@ -43,6 +43,7 @@ class JobRun:
     output_tokens: int = 0
     cost_used: float = 0.0
     lease_owner: str = ""
+    lease_token: str = ""
     lease_expires_at: str = ""
     not_before: str = ""
     cancel_requested: bool = False

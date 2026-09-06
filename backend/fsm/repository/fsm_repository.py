@@ -13,6 +13,8 @@
 from __future__ import annotations
 
 from typing import Optional, Protocol
+from copy import deepcopy
+from jobs.runtime import job_write_fence
 
 from fsm.state.models import AcceptanceGate, FsmState
 
@@ -52,19 +54,22 @@ class InMemoryFsmRepository:
         self._gates: list[AcceptanceGate] = []
 
     def get_by_task_id(self, task_id: str) -> Optional[FsmState]:
-        return self._states.get(task_id)
+        return deepcopy(self._states.get(task_id))
 
     def save(self, state: FsmState) -> None:
-        self._states[state.task_id] = state
+        with job_write_fence(state.task_id):
+            self._states[state.task_id] = deepcopy(state)
 
     def record_gate(self, gate: AcceptanceGate) -> None:
-        self._gates.append(gate)
+        with job_write_fence(gate.task_id):
+            self._gates.append(deepcopy(gate))
 
     def persist_transition(self, state: FsmState, gate: Optional[AcceptanceGate] = None) -> None:
         # 内存实现：原子性天然成立（单进程），先写状态再记看门。
-        self._states[state.task_id] = state
-        if gate is not None:
-            self._gates.append(gate)
+        with job_write_fence(state.task_id):
+            self._states[state.task_id] = deepcopy(state)
+            if gate is not None:
+                self._gates.append(deepcopy(gate))
 
     def gates(self, task_id: Optional[str] = None) -> list[AcceptanceGate]:
         """取看门记录（测试辅助）。"""
@@ -77,8 +82,9 @@ class InMemoryFsmRepository:
 
     def delete(self, task_id: str) -> None:
         """删除任务状态与看门。"""
-        self._states.pop(task_id, None)
-        self._gates = [g for g in self._gates if g.task_id != task_id]
+        with job_write_fence(task_id):
+            self._states.pop(task_id, None)
+            self._gates = [g for g in self._gates if g.task_id != task_id]
 
 
 # ============================================================
@@ -164,14 +170,14 @@ class SqlAlchemyFsmRepository:
             return [str(task_id) for task_id in rows]
 
     def save(self, state: FsmState) -> None:
-        with self._new_session() as session:
+        with job_write_fence(state.task_id), self._new_session() as session:
             self._upsert_state(session, state)
             session.commit()
 
     def record_gate(self, gate: AcceptanceGate) -> None:
         from fsm.state.orm import AcceptanceGateModel
 
-        with self._new_session() as session:
+        with job_write_fence(gate.task_id), self._new_session() as session:
             session.add(
                 AcceptanceGateModel(
                     task_id=gate.task_id,
@@ -188,7 +194,7 @@ class SqlAlchemyFsmRepository:
         from fsm.state.orm import AcceptanceGateModel, FsmStateModel
         from sqlalchemy import delete as _del
 
-        with self._new_session() as session:
+        with job_write_fence(task_id), self._new_session() as session:
             session.execute(_del(FsmStateModel).where(FsmStateModel.task_id == task_id))
             session.execute(_del(AcceptanceGateModel).where(AcceptanceGateModel.task_id == task_id))
             session.commit()
@@ -201,7 +207,7 @@ class SqlAlchemyFsmRepository:
         """
         from fsm.state.orm import AcceptanceGateModel
 
-        with self._new_session() as session:
+        with job_write_fence(state.task_id), self._new_session() as session:
             self._upsert_state(session, state)
             if gate is not None:
                 session.add(

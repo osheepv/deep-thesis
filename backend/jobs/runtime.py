@@ -36,10 +36,15 @@ class JobRuntime:
     job_id: str
     worker_id: str
     pricing: Pricing
+    lease_token: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.lease_token is None:
+            self.lease_token = self.registry.get_by_id(self.job_id).lease_token
 
     def check_cancelled(self) -> None:
         self.registry.raise_if_cancelled(self.job_id)
-        self.registry.assert_active_lease(self.job_id, self.worker_id)
+        self.registry.assert_active_lease(self.job_id, self.worker_id, self.lease_token)
 
     def before_llm(self, estimated_input_tokens: int, max_output_tokens: int) -> None:
         self.check_cancelled()
@@ -75,6 +80,18 @@ def get_current_job_runtime() -> JobRuntime | None:
 def get_current_job_id() -> str:
     runtime = get_current_job_runtime()
     return runtime.job_id if runtime is not None else ""
+
+
+@contextmanager
+def job_write_fence(task_id: str) -> Iterator[None]:
+    runtime = get_current_job_runtime()
+    if runtime is None:
+        yield
+        return
+    with runtime.registry.write_fence(
+        runtime.job_id, runtime.worker_id, runtime.lease_token, task_id
+    ):
+        yield
 
 
 @contextmanager

@@ -69,6 +69,7 @@ class JobWorker:
             job_id=job.job_id,
             worker_id=self.worker_id,
             pricing=self.pricing,
+            lease_token=job.lease_token,
         )
         handler = self.handlers.get(job.operation)
         if handler is None:
@@ -77,11 +78,12 @@ class JobWorker:
                 self.worker_id,
                 f"未注册作业处理器: {job.operation}",
                 retryable=False,
+                lease_token=job.lease_token,
             )
         heartbeat_stop = threading.Event()
         heartbeat_thread = threading.Thread(
             target=self._heartbeat_loop,
-            args=(job.job_id, heartbeat_stop),
+            args=(job.job_id, heartbeat_stop, job.lease_token),
             name=f"heartbeat-{job.job_id}",
             daemon=True,
         )
@@ -91,22 +93,26 @@ class JobWorker:
                 runtime.check_cancelled()
                 result = handler(job)
                 runtime.check_cancelled()
-            return self.registry.complete(job.job_id, self.worker_id, result)
+            return self.registry.complete(
+                job.job_id, self.worker_id, result, lease_token=job.lease_token
+            )
         except JobCancelledError as exc:
             return self.registry.fail(
-                job.job_id, self.worker_id, str(exc), retryable=False
+                job.job_id, self.worker_id, str(exc), retryable=False, lease_token=job.lease_token
             )
         except JobBudgetExceededError as exc:
             return self.registry.fail(
-                job.job_id, self.worker_id, str(exc), retryable=False
+                job.job_id, self.worker_id, str(exc), retryable=False, lease_token=job.lease_token
             )
         except PermanentJobError as exc:
             return self.registry.fail(
-                job.job_id, self.worker_id, str(exc), retryable=False
+                job.job_id, self.worker_id, str(exc), retryable=False, lease_token=job.lease_token
             )
         except Exception as exc:  # noqa: BLE001
             logger.exception("后台作业执行失败 %s", job.job_id)
-            return self.registry.fail(job.job_id, self.worker_id, str(exc), retryable=True)
+            return self.registry.fail(
+                job.job_id, self.worker_id, str(exc), retryable=True, lease_token=job.lease_token
+            )
         finally:
             heartbeat_stop.set()
             heartbeat_thread.join(timeout=1.0)
@@ -122,12 +128,13 @@ class JobWorker:
             if job is None:
                 self._stop.wait(self.poll_interval)
 
-    def _heartbeat_loop(self, job_id: str, stop: threading.Event) -> None:
+    def _heartbeat_loop(self, job_id: str, stop: threading.Event, lease_token: str) -> None:
         interval = max(2.0, self.lease_seconds / 3)
         while not stop.wait(interval):
             try:
                 self.registry.heartbeat(
-                    job_id, self.worker_id, lease_seconds=self.lease_seconds
+                    job_id, self.worker_id, lease_seconds=self.lease_seconds,
+                    lease_token=lease_token,
                 )
             except Exception:  # noqa: BLE001 - 作业已结束或租约已转移
                 return

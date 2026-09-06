@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .models import SectionDraft, SectionDraftStatus
+from jobs.runtime import job_write_fence
 
 
 class SectionDraftRegistryError(ValueError):
@@ -104,7 +105,7 @@ class SectionDraftRegistry:
         if not content.strip():
             raise SectionDraftRegistryError("分节正文不能为空")
         now = _utc_now()
-        with self._lock:
+        with job_write_fence(task_id), self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
                 row = self._db.execute(
@@ -149,7 +150,7 @@ class SectionDraftRegistry:
             if passed
             else SectionDraftStatus.AUTO_REJECTED
         )
-        with self._lock:
+        with job_write_fence(task_id), self._lock:
             self._db.execute(
                 "UPDATE t_section_draft SET status=?, gate_report=?, updated_at=? "
                 "WHERE task_id=? AND section_draft_id=?",
@@ -165,7 +166,7 @@ class SectionDraftRegistry:
         self, task_id: str, section_draft_id: str, *, approved: bool,
         actor: str = "author", reason: str = "",
     ) -> SectionDraft:
-        with self._lock:
+        with job_write_fence(task_id), self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
                 draft = self.get(task_id, section_draft_id)
@@ -214,7 +215,7 @@ class SectionDraftRegistry:
             SectionDraftStatus.AUTO_REJECTED,
         }:
             return draft
-        with self._lock:
+        with job_write_fence(task_id), self._lock:
             self._db.execute(
                 "UPDATE t_section_draft SET status=?, stale_reason=?, updated_at=? "
                 "WHERE task_id=? AND section_draft_id=?",
@@ -272,7 +273,7 @@ class SectionDraftRegistry:
         return [dict(row) for row in rows]
 
     def delete_task(self, task_id: str) -> int:
-        with self._lock:
+        with job_write_fence(task_id), self._lock:
             cur = self._db.execute("DELETE FROM t_section_draft WHERE task_id=?", (task_id,))
             self._db.commit()
             return int(cur.rowcount)

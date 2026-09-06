@@ -14,6 +14,7 @@ import json
 import sqlite3
 import threading
 import uuid
+from jobs.runtime import job_write_fence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -148,7 +149,7 @@ class ArtifactRegistry:
         content_hash = hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
         now = _utc_now()
 
-        with self._lock:
+        with job_write_fence(task_id), self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
                 if source_event_id:
@@ -212,7 +213,7 @@ class ArtifactRegistry:
             if passed
             else ArtifactStatus.AUTO_REJECTED
         )
-        with self._lock:
+        with job_write_fence(self.get(artifact_id).task_id), self._lock:
             artifact = self.get(artifact_id)
             if artifact.status != ArtifactStatus.GENERATED:
                 raise ArtifactRegistryError("只有 GENERATED 产物可以提交自动验收")
@@ -232,7 +233,7 @@ class ArtifactRegistry:
         reason: str = "",
     ) -> Artifact:
         """记录用户审批；新版本批准时递归使旧版本的下游过期。"""
-        with self._lock:
+        with job_write_fence(self.get(artifact_id).task_id), self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
                 artifact = self.get(artifact_id)
@@ -352,7 +353,7 @@ class ArtifactRegistry:
 
     def delete_task(self, task_id: str) -> int:
         """删除指定任务的投影产物；FSM Outbox 仍保留审计源。"""
-        with self._lock:
+        with job_write_fence(task_id), self._lock:
             cur = self._db.execute("DELETE FROM t_artifact WHERE task_id=?", (task_id,))
             self._db.commit()
             return int(cur.rowcount)
