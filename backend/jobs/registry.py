@@ -187,11 +187,10 @@ class JobRegistry:
 
     def recover_expired(self) -> int:
         """启动或巡检时恢复过期 Worker 租约，返回受影响作业数。"""
-        now = _utc_now()
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
-                recovered = self._recover_expired_locked(now)
+                recovered = self._recover_expired_locked(_utc_now())
                 self._db.commit()
             except Exception:
                 self._db.rollback()
@@ -201,12 +200,12 @@ class JobRegistry:
     def claim_next(self, worker_id: str, *, lease_seconds: int = 60) -> JobRun | None:
         if not worker_id.strip():
             raise JobRegistryError("worker_id 不能为空")
-        now_dt = _utc_now_dt()
-        now = _to_iso(now_dt)
-        lease_expires = _to_iso(now_dt + timedelta(seconds=max(10, lease_seconds)))
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
+                now_dt = _utc_now_dt()
+                now = _to_iso(now_dt)
+                lease_expires = _to_iso(now_dt + timedelta(seconds=max(10, lease_seconds)))
                 self._recover_expired_locked(now)
                 row = self._db.execute(
                     "SELECT job_id FROM t_job_run WHERE status=? "
@@ -249,19 +248,25 @@ class JobRegistry:
             JobStatus.RUNNING, JobStatus.CANCEL_REQUESTED
         }:
             raise JobRegistryError("作业租约不属于当前 Worker")
-        lease = _to_iso(_utc_now_dt() + timedelta(seconds=max(10, lease_seconds)))
         with self._lock:
-            now = _utc_now()
-            cursor = self._db.execute(
-                "UPDATE t_job_run SET lease_expires_at=?, updated_at=? WHERE job_id=? "
-                "AND lease_owner=? AND status IN (?, ?) AND lease_expires_at>? "
-                "AND (? IS NULL OR lease_token=?)",
-                (lease, now, job_id, worker_id, JobStatus.RUNNING.value,
-                 JobStatus.CANCEL_REQUESTED.value, now, lease_token, lease_token),
-            )
-            self._db.commit()
-            if cursor.rowcount != 1:
-                raise JobRegistryError("作业租约已失效，不能续租")
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                now_dt = _utc_now_dt()
+                now = _to_iso(now_dt)
+                lease = _to_iso(now_dt + timedelta(seconds=max(10, lease_seconds)))
+                cursor = self._db.execute(
+                    "UPDATE t_job_run SET lease_expires_at=?, updated_at=? WHERE job_id=? "
+                    "AND lease_owner=? AND status IN (?, ?) AND lease_expires_at>? "
+                    "AND (? IS NULL OR lease_token=?)",
+                    (lease, now, job_id, worker_id, JobStatus.RUNNING.value,
+                     JobStatus.CANCEL_REQUESTED.value, now, lease_token, lease_token),
+                )
+                if cursor.rowcount != 1:
+                    raise JobRegistryError("作业租约已失效，不能续租")
+                self._db.commit()
+            except Exception:
+                self._db.rollback()
+                raise
         return self.get_by_id(job_id)
 
     def complete(self, job_id: str, worker_id: str, result: dict[str, Any], *,
