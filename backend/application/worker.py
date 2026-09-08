@@ -15,7 +15,11 @@ def main(argv=None) -> int:
     mode.add_argument("--once", action="store_true", help="execute at most one available job")
     mode.add_argument("--check", action="store_true", help="reconcile storage without executing jobs")
     parser.add_argument("--worker-id", default="")
+    parser.add_argument("--lease-seconds", type=int, default=120,
+                        help="lease duration in seconds (minimum 10; default 120)")
     args = parser.parse_args(argv)
+    if args.lease_seconds < 10:
+        parser.error("--lease-seconds must be at least 10")
     if not args.data_dir:
         parser.error("--data-dir or THESIS_DATA_DIR is required")
     os.environ["THESIS_DATA_DIR"] = args.data_dir
@@ -35,7 +39,8 @@ def main(argv=None) -> int:
 
     from jobs import JobStatus, JobWorker
 
-    worker = JobWorker(orchestration._jobs, orchestration.job_handlers(), worker_id=args.worker_id)
+    worker = JobWorker(orchestration._jobs, orchestration.job_handlers(), worker_id=args.worker_id,
+                       lease_seconds=args.lease_seconds)
     previous = {}
     try:
         for signum in (signal.SIGINT, signal.SIGTERM):
