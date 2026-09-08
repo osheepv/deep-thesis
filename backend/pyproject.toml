@@ -13,6 +13,7 @@ dynamic = ["dependencies"]
 
 [project.scripts]
 deep-thesis-worker = "application.worker:main"
+deep-thesis-backup = "application.backup:main"
 
 [tool.setuptools]
 py-modules = ["config", "main"]

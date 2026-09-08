@@ -94,6 +94,19 @@ print(json.dumps(generated))
     )
     assert result.returncode == 0, result.stderr + result.stdout
     identifiers = json.loads(result.stdout.strip().splitlines()[-1])
+    # All application processes have exited. Back up, preserve the original,
+    # then restore before verifying actual application records and reconciliation.
+    backup_path = tmp_path / "snapshot"
+    for action in ("create", "restore"):
+        if action == "restore":
+            (tmp_path / "data").rename(tmp_path / "preserved-data")
+        backed_up = subprocess.run(
+            [sys.executable, "-m", "application.backup", action,
+             "--data-dir", str(tmp_path / "data"), "--backup-dir", str(backup_path), "--stopped"],
+            cwd=worker_directory, env=_environment(tmp_path), capture_output=True,
+            text=True, encoding="utf-8", timeout=45,
+        )
+        assert backed_up.returncode == 0, backed_up.stderr + backed_up.stdout
     restart = '''
 import sys
 from application.bootstrap import build_orchestration
@@ -103,6 +116,12 @@ assert orchestration._jobs.get_by_id(sys.argv[2]).status.value == 'SUCCEEDED'
 assert orchestration._store.get(sys.argv[1]).ring1
 assert orchestration._docx_service._repo.get_output_owned(sys.argv[3], 'standalone')
 assert orchestration.reconcile_startup().data['status'] == 'CONSISTENT'
+from fastapi.testclient import TestClient
+from application.main import app
+with TestClient(app) as client:
+    downloaded = client.get('/api/v1/docx/files/' + sys.argv[3], params={'session_id': 'standalone'})
+    assert downloaded.status_code == 200, downloaded.text
+    assert downloaded.content.startswith(b'PK')
 '''
     result = subprocess.run(
         [sys.executable, "-c", restart, identifiers["task_id"], identifiers["job_id"], identifiers["file_id"]],

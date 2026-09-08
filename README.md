@@ -1,5 +1,7 @@
 # Deep Thesis
 
+M12 已增加统一数据目录的停机备份、SHA-256 / SQLite 完整性校验和原路径恢复。使用 `python -m application.backup create|verify|restore`（安装命令 `deep-thesis-backup`）；具体参数、停机要求和回退步骤见[数据备份与恢复指南](docs/数据备份与恢复指南.md)。本次相关回归 21 项通过，恢复后的真实任务对账及成稿下载通过；旧分散数据迁移和发布环境故障演练仍待完成。见 [M12 验收报告](docs/M12停机备份与恢复验收_2026-09-08.md)。
+
 [![CI](https://github.com/osheepv/deep-thesis/actions/workflows/main.yml/badge.svg)](https://github.com/osheepv/deep-thesis/actions/workflows/main.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Discussions](https://img.shields.io/badge/GitHub-Discussions-6f42c1)](https://github.com/osheepv/deep-thesis/discussions)
