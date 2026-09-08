@@ -46,7 +46,7 @@ def build_session_factory(db_url: Optional[str] = None):
     return sessionmaker(bind=build_engine(db_url))
 
 
-def build_fsm_repository(db_url: Optional[str] = None):
+def build_fsm_repository(db_url: Optional[str] = None, *, require_persistent: bool = False):
     """构建 FSM 仓储（SQLAlchemy 优先，连不上回退内存）。
 
     Returns:
@@ -56,11 +56,25 @@ def build_fsm_repository(db_url: Optional[str] = None):
     from fsm.state.orm import FSMBase
 
     url = db_url or settings.db_url
+    if require_persistent:
+        from sqlalchemy.engine import make_url
+
+        parsed = make_url(url)
+        if parsed.get_backend_name() == "sqlite":
+            from pathlib import Path
+
+            if not parsed.database or not Path(parsed.database).is_absolute() or parsed.query.get("mode") == "memory":
+                raise ValueError("Standalone storage requires an absolute persistent THESIS_DB_URL")
+    engine = None
     try:
         engine = build_engine(url)
         # 自动建表：开发/过渡期便利；生产由 Alembic 管理（create_all 不破坏已有表）
         FSMBase.metadata.create_all(engine)
         return SqlAlchemyFsmRepository(session_factory=sessionmaker(bind=engine))
     except Exception as exc:  # noqa: BLE001 - 无 PG/权限等开发环境常见
+        if require_persistent:
+            if engine is not None:
+                engine.dispose()
+            raise RuntimeError("Persistent FSM database is unavailable; startup refused") from exc
         logger.warning("数据库不可用（%s），回退 InMemory FSM 仓储：%s", url, exc)
         return InMemoryFsmRepository()

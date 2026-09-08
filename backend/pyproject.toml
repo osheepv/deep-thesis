@@ -11,6 +11,9 @@ requires-python = ">=3.12"
 authors = [{ name = "Deep Thesis contributors" }]
 dynamic = ["dependencies"]
 
+[project.scripts]
+deep-thesis-worker = "application.worker:main"
+
 [tool.setuptools]
 py-modules = ["config", "main"]
 

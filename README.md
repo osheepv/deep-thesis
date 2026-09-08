@@ -147,6 +147,8 @@ python -m uvicorn application.main:app --host 127.0.0.1 --port 8000
 
 打开 http://127.0.0.1:8000/docs 查看 Swagger。
 
+需要把后台作业与 API 分开运行时，两端设置相同的绝对 `THESIS_DATA_DIR`，API 设置 `THESIS_JOB_WORKER_ENABLED=false`，另开终端运行 `python -m application.worker --check`，对账通过后运行 `python -m application.worker`。安装包也提供 `deep-thesis-worker` 命令；新模式持久化模板及下载记录。完整步骤与旧数据处理见[独立 Worker 部署指南](docs/独立Worker部署指南.md)，验证范围见[M11验收报告](docs/M11独立Worker与共享存储验收_2026-09-08.md)。
+
 **前端 UI**（Claude 桌面风格界面，独立端口）：
 
 ```bash
@@ -163,7 +165,7 @@ python -m http.server 8787
 
 ## 运行测试
 
-当前回归基线：**405 项 pytest 全部通过**（2026-09-07），另有 **31/31 条离线学术质量规则 case 通过**。M5 新增启动对账与故障矩阵，M6 增加硕士真实全流程预检和章节余量回归，M7 增加未完成章节持久化、博士长稿恢复与润色压缩守护，M8 增加进程故障、租约与并发竞态测试，M9 增加业务写入执行凭证与租约栅栏，M10 增加进程级章节恢复和锁等待计时回归。
+当前回归基线：**415 项 pytest 全部通过**（2026-09-08），另有 **31/31 条离线学术质量规则 case 通过**。M5 新增启动对账与故障矩阵，M6 增加硕士真实全流程预检和章节余量回归，M7 增加未完成章节持久化、博士长稿恢复与润色压缩守护，M8 增加进程故障、租约与并发竞态测试，M9 增加业务写入执行凭证与租约栅栏，M10 增加进程级章节恢复和锁等待计时回归，M11 增加独立 Worker、共享存储和跨进程文件下载验证。
 
 基线演进按公共 Git 历史说明：H4-001R 为 278 项；H4-002 自动草稿完成并修复幽灵草稿/提交墓碑竞态后为 315 项；H4-003 评测契约进入 pytest 后为 327 项；环3 Agent Loop 首版为 337 项；正式编排接线、检索词扩展恢复与 fail-closed 契约补齐后为 352 项；本地视觉依赖契约进入后为 353 项；NAT-001 M1 学术边界与停止规则契约进入后为 364 项。数字以实际运行 `python -m pytest tests -q` 的结果为准。
 
@@ -201,7 +203,7 @@ Cytoscape.js 3.30.2（知识图谱）· pytest 8.3.5
 `THESIS_DEEPSEEK_SUPPORTS_TOOLS` / `THESIS_DEEPSEEK_SUPPORTS_VISION` / `THESIS_AGENT_LOOP_ENABLED` / `THESIS_AGENT_LOOP_MAX_TURNS` /
 `THESIS_DB_URL` / `THESIS_LIT_ENABLED` / `THESIS_LIT_SCOPE` /
 `THESIS_METASO_ENABLED`（默认 false，省钱）/ `THESIS_RAG_ENABLED` / `THESIS_CORS_ORIGINS` /
-`THESIS_TASK_STORE_MEMORY`（测试用）/ `THESIS_ARTIFACT_DB` / `THESIS_EVIDENCE_DB` /
+`THESIS_DATA_DIR` / `THESIS_DOCX_DB`（统一目录模式）/ `THESIS_TASK_STORE_MEMORY`（测试用）/ `THESIS_ARTIFACT_DB` / `THESIS_EVIDENCE_DB` /
 `THESIS_RESEARCH_DB` / `THESIS_SECTION_DB` / `THESIS_AUTOSAVE_DB` / `THESIS_JOB_DB` /
 `THESIS_JOB_WORKER_ENABLED` / `THESIS_LLM_INPUT_COST_PER_MILLION` /
 `THESIS_LLM_OUTPUT_COST_PER_MILLION` / `THESIS_KB_MAX_FILE_MB` /

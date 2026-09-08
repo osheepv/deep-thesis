@@ -58,6 +58,9 @@ class JobWorker:
         if self._thread is not None:
             self._thread.join(timeout=max(0.0, timeout))
 
+    def run_forever(self) -> None:
+        self._loop()
+
     def run_once(self) -> JobRun | None:
         job = self.registry.claim_next(
             self.worker_id, lease_seconds=self.lease_seconds

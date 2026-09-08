@@ -25,6 +25,10 @@ import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
+from .bootstrap import build_orchestration, configure_storage
+
+configure_storage()
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -47,34 +51,11 @@ logger = logging.getLogger("thesis.application")
 
 
 def _default_orchestration() -> MainOrchestration:
-    """默认主编排：FSM 走 SQLite（连不上回退 InMemory），保障服务可起。
-
-    docx 渲染器与业务路由共享同一 DocxRepository，保证 console 生成产物
-    可被 /api/v1/docx/files/{file_id} 下载端点找到。
-    """
-    from db.session import build_fsm_repository
-    from thesis_docx.repository import DocxRepository
-    from thesis_docx.service import DocxService
-    from fsm.orchestrator import FsmOrchestrator
-    from knowledge.store import get_kb_store
-    from .service.uc_main_orchestration import RealDocxRenderer
-
-    # 与 docx 业务路由共享仓储（get_docx_service 优先读 app.state.docx_service）
-    docx_service = DocxService()
-    _docx_repo = docx_service._repo  # noqa: SLF001 - 共享同一实例
-    renderer = RealDocxRenderer(repository=_docx_repo)
-    fsm_inst = FsmOrchestrator(build_fsm_repository())
-    # 注册进 fsm.di 全局单例：fsm.api 的 advance/hitl/rollback 与 console 共享同一 FSM 实例
+    """API and worker share business assembly and persistent paths."""
     import fsm.di as _fsm_di
 
-    _fsm_di._orchestrator = fsm_inst
-    orchestration = MainOrchestration(
-        fsm=fsm_inst,
-        docx_renderer=renderer,
-        knowledge_store=get_kb_store(),
-    )
-    # 挂到 app.state 供 docx router 依赖注入复用
-    orchestration._docx_service = docx_service  # noqa: SLF001
+    orchestration = build_orchestration()
+    _fsm_di._orchestrator = orchestration._fsm
     return orchestration
 
 
