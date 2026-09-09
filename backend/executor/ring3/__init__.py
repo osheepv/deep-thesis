@@ -489,16 +489,18 @@ class Ring3LiteratureReviewExecutor(RingExecutor):
 
         # 离线/测试开关必须在任何LLM或文献源调用之前生效。
         if not _LIT_ENABLED:
+            local_items = _kb_docs_to_items(ctx)
             result = LiteraturePoolResult(
                 theme=theme, subject_field=ctx.subject_field, degree=ctx.degree,
-                items=[], total=0, target_count=_DEGREE_TARGETS[ctx.degree],
-                summary="文献检索已禁用（THESIS_LIT_ENABLED=false），池为空；环5/6 须禁止引用。",
+                items=local_items, total=len(local_items), target_count=_DEGREE_TARGETS[ctx.degree],
+                summary=(f"在线文献检索已禁用，使用已登记的 {len(local_items)} 条本地文献；上传不代表已核验。"
+                         if local_items else "文献检索已禁用（THESIS_LIT_ENABLED=false），池为空；环5/6 须禁止引用。"),
             )
             return ExecResult(
                 output=result.model_dump_json(indent=2),
                 accept=True, fallbackTo=None, issues=["文献检索禁用，池空"],
                 evidence={
-                    "sources": [],
+                    "sources": ["knowledge_base"] if local_items else [],
                     "fetched": 0,
                     "note": "THESIS_LIT_ENABLED=false",
                     "agent_loop": {

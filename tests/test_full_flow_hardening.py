@@ -209,6 +209,37 @@ def test_literature_must_be_curated_and_is_registered_in_kb(monkeypatch, tmp_pat
     assert docs[0]["metadata"]["kind"] == "literature"
 
 
+def test_empty_literature_retry_reads_newly_uploaded_material(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from knowledge.store import KnowledgeStore
+
+    knowledge = KnowledgeStore(tmp_path / "kb")
+    fake = _FlowExecutor()
+
+    def search(context):
+        items = [{"title": doc["file_name"], "reliability": "uncertain"}
+                 for doc in context.kb_files if doc.get("metadata", {}).get("kind") == "literature"]
+        return ExecResult(output=json.dumps({"items": items}), accept=True)
+
+    monkeypatch.setattr("knowledge.store.get_kb_store", lambda: knowledge)
+    monkeypatch.setattr("application.service.uc_main_orchestration.get_executor",
+                        lambda ring: SimpleNamespace(execute=search) if ring == 3 else fake.for_ring(ring))
+    orchestration = MainOrchestration(knowledge_store=knowledge)
+    task_id = orchestration.create_task("Retry literature", Degree.BACHELOR, "CS", session_id="retry-kb").data["task_id"]
+    orchestration.run_ring1(task_id)
+    orchestration.select_ring1_candidate(task_id, {"candidate_index": 0})
+    orchestration.confirm_ring(task_id, 1)
+    orchestration.run_ring2(task_id)
+    orchestration.confirm_ring(task_id, 2)
+    with pytest.raises(BizException, match="未检索到"):
+        orchestration.run_ring3(task_id)
+    knowledge.save_document("retry-kb", "fixture.txt", b"test fixture", metadata={"kind": "literature"})
+    result = orchestration.run_ring3(task_id)
+    assert result.data["total"] == 1
+    assert result.data["items"][0]["reliability"] == "uncertain"
+    assert orchestration.progress(task_id).data["phase_state"] == "WAITING_APPROVAL"
+
+
 def test_degraded_draft_is_rejected_and_verified_results_reach_writer(monkeypatch):
     orchestration, fake, task_id = _advance_to_ring6(monkeypatch)
     outline = orchestration._artifacts.get_active(  # noqa: SLF001

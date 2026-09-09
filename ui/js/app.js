@@ -1103,8 +1103,8 @@ async function copyText(text) {
    ============================================================ */
 const I18N = {
   'zh-CN': {
-    'user.name': '欧弱弱',
-    'user.role': 'Pro',
+    'user.name': 'Deep Thesis',
+    'user.role': '论文工作台',
     'menu.gateway': '网关',
     'menu.settings': '设置',
     'menu.language': '语言',
@@ -1201,8 +1201,8 @@ const I18N = {
     'ctx.detail.output': '模型输出',
   },
   'en-US': {
-    'user.name': 'Ruoruo',
-    'user.role': 'Pro',
+    'user.name': 'Deep Thesis',
+    'user.role': 'Thesis workspace',
     'menu.gateway': 'Gateway',
     'menu.settings': 'Settings',
     'menu.language': 'Language',
@@ -2451,6 +2451,9 @@ async function loadSessionDetail(taskId) {
 // —— 根据进度重建消息历史（刷新后恢复已完成环）——
 function buildHistoryFromProgress(prog) {
   if (!prog || !prog.rings) return;
+  document.querySelectorAll('.cand-item').forEach(button => {
+    button.disabled = prog.current_ring_no !== 1 || prog.phase_state !== 'WAITING_APPROVAL';
+  });
   const flow = document.getElementById('chat-flow');
   const inner = flow.querySelector('.chat-inner');
   const finished = prog.rings.filter(r => r.state === 'PASSED');
@@ -2618,6 +2621,8 @@ async function runCurrentRing() {
         ? '<button class="btn btn-primary btn-sm" onclick="rollbackRing(6)">回到环6修订正文与引用</button><button class="btn btn-secondary btn-sm" onclick="rollbackRing(3)">回到环3整理文献</button>'
         : no === 7
         ? '<button class="btn btn-primary btn-sm" onclick="rollbackRing(6)">回到环6修订初稿</button>'
+        : no === 3
+        ? '<button class="btn btn-primary btn-sm" onclick="document.querySelector(\'.kb-tab[data-tab=refs]\')?.click(); document.querySelector(\'.kb-upload-btn\')?.focus()">补充文献后重试</button>'
         : '';
       appendAIMsg(`<div class="warn-card"><div class="warn-title">环${no} 执行未完成</div><div style="font-size:13px;">${escapeHtml2(result.msg || '')}</div><div class="warn-actions">${recovery}<button class="btn btn-secondary btn-sm" onclick="document.querySelector('.kb-tab[data-tab=jobs]')?.click()">查看后台作业</button></div></div>`, '后台作业失败');
     }

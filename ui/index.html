@@ -80,11 +80,11 @@
 
       <div class="sidebar-foot">
         <button class="foot-trigger" id="foot-trigger" aria-haspopup="menu" aria-expanded="false">
-          <span class="foot-avatar">欧</span>
+          <span class="foot-avatar" aria-hidden="true">DT</span>
           <span class="label">
-            <span data-i18n="user.name">欧弱弱</span>
+            <span data-i18n="user.name">Deep Thesis</span>
             <span style="color: var(--text-subtle); font-size: 11px;"> · </span>
-            <span data-i18n="user.role" style="color: var(--text-subtle); font-size: 11px;">Pro</span>
+            <span data-i18n="user.role" style="color: var(--text-subtle); font-size: 11px;">论文工作台</span>
           </span>
           <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
@@ -192,10 +192,8 @@
             <span>知识库文献</span>
             <span class="count">0</span>
           </div>
-          <label class="kb-upload-btn" style="display:block;margin:4px 0 8px;">
-            <input type="file" id="kb-file-input" accept=".pdf,.doc,.docx,.txt,.md,.ris,.bib" multiple style="display:none">
-            <span style="display:flex;align-items:center;gap:6px;padding:7px 10px;border:1px dashed var(--border-divider);border-radius:8px;font-size:12px;color:var(--text-subtle);cursor:pointer;">⬆ 上传文献（PDF / Word / 题录）</span>
-          </label>
+          <input type="file" id="kb-file-input" accept=".pdf,.doc,.docx,.txt,.md,.ris,.bib" multiple hidden>
+          <button type="button" class="kb-upload-btn" onclick="document.getElementById('kb-file-input').click()" style="display:flex;align-items:center;gap:6px;width:100%;margin:4px 0 8px;padding:7px 10px;border:1px dashed var(--border-divider);border-radius:8px;font-size:12px;color:var(--text-subtle);background:transparent;cursor:pointer;">⬆ 上传文献（PDF / Word / 题录）</button>
           <div id="kb-refs-empty" style="padding:12px;color:var(--text-subtle);font-size:12px;">暂无文献（可上传或从引导平台下载）</div>
         </div>
 
@@ -452,9 +450,9 @@
 <!-- ============ 左下角弹出菜单（仿 Claude Code） ============ -->
 <div class="foot-menu" id="foot-menu" role="menu" aria-label="用户菜单">
   <div class="menu-head">
-    <span class="menu-head-avatar">欧</span>
+    <span class="menu-head-avatar" aria-hidden="true">DT</span>
     <div class="menu-head-info">
-      <div class="menu-head-name" data-i18n="user.name">欧弱弱</div>
+      <div class="menu-head-name" data-i18n="user.name">Deep Thesis</div>
       <div class="menu-head-status">
         <span class="ok-dot"></span>
         <span data-i18n="menu.gateway">网关</span>

@@ -2256,7 +2256,7 @@ class MainOrchestration(EvidenceServiceMixin, ArtifactHelpersMixin, ResearchServ
         环3 离线/无文献源时返回空池（环5/6 prompt 会提示"禁止引用"）。
         已知库文献（用户从引导层平台下载的）合并入池。
         """
-        if rec.ring3 is not None:
+        if rec.ring3 is not None and rec.ring3.get("items"):
             return rec.ring3.get("items", [])
         # 读会话知识库已存文献（用户下载的题录）
         kb_files = []
