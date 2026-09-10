@@ -2489,7 +2489,7 @@ function buildHistoryFromProgress(prog) {
     const statusColor = trust && !evidencePassed ? 'var(--warning)' : 'var(--success)';
     appendAIMsg(`<p><strong>环${r.ring_no} ${name}</strong> <span style="color:${statusColor}">${statusText}</span></p>` +
       (trust ? renderTrustAssessment(trust, true) : '') +
-      `<p style="font-size:12px;color:var(--text-subtle);">点击「执行当前环节」继续环${prog.current_ring_no || '下一环'}。</p>`,
+      '<p style="font-size:12px;color:var(--text-subtle);">本环产物已确认。</p>',
       `${name} · ${trust && !evidencePassed ? '有限可信' : '已通过'}`);
   });
   const cur = prog.current_ring_no;
