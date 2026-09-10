@@ -2584,6 +2584,7 @@ async function confirmNextRing(event) {
 }
 // —— 执行当前环节 ——
 let ringRunning = false;
+let activeJobRecoveryTask = '';
 async function runCurrentRing() {
   if (!currentSession || ringRunning) return;
   const btn = document.getElementById('run-cur-ring');
@@ -2646,6 +2647,11 @@ function updateRunBtn(prog) {
   if (!currentSession) {
     btn.disabled = true;
     document.getElementById('run-btn-label').textContent = '请先选择论文任务';
+    return;
+  }
+  if (activeJobRecoveryTask === currentSession) {
+    btn.disabled = true;
+    document.getElementById('run-btn-label').textContent = '恢复后台作业状态…';
     return;
   }
   const no = prog ? prog.current_ring_no : 1;
@@ -3097,6 +3103,44 @@ async function waitForJob(taskId, jobId, label) {
     pollDelay = Math.min(pollDelay * 1.6, 5000);
   }
   return { code: 1, msg: `${label}超过30分钟仍未完成，可在“作业”页继续查看或取消` };
+}
+
+async function resumeActiveJobs(taskId) {
+  if (!taskId || activeJobRecoveryTask === taskId) return;
+  activeJobRecoveryTask = taskId;
+  try {
+    const response = await apiListJobs(taskId);
+    if (taskId !== currentSession || response.code !== 0) return;
+    const activeJobs = (response.data || []).filter(job =>
+      ['PENDING', 'RUNNING', 'CANCEL_REQUESTED'].includes(job.status)
+      && ['ring.execute', 'docx.generate'].includes(job.operation)
+    );
+    if (!activeJobs.length) return;
+    updateRunBtn(await apiSessionProgress(taskId));
+    for (const job of activeJobs) {
+      if (taskId !== currentSession) break;
+      const ringNo = Number(job.payload?.ring_no || 0);
+      const label = job.operation === 'ring.execute'
+        ? `环${ringNo || ''} ${RING_NAMES[ringNo] || ''}`.trim()
+        : '生成 DOCX';
+      const result = await waitForJob(taskId, job.job_id, label);
+      if (taskId !== currentSession) break;
+      const inner = document.getElementById('chat-flow')?.querySelector('.chat-inner');
+      if (inner) inner.dataset.historyBuilt = '';
+      await loadSessionDetail(taskId);
+      await loadSessions();
+      await refreshVisibleResumeSummary();
+      if (result.code !== 0) {
+        announceWorkspace(result.msg || `${label}执行失败`);
+      }
+    }
+  } finally {
+    if (taskId === currentSession) {
+      const latest = await apiSessionProgress(taskId);
+      updateRunBtn(latest);
+    }
+    if (activeJobRecoveryTask === taskId) activeJobRecoveryTask = '';
+  }
 }
 
 async function loadJobsPanel(announce = true) {
@@ -4556,5 +4600,6 @@ async function initApp() {
   }
   // 恢复链路全部完成后才允许写回服务端。
   workspacePersistenceReady = true;
+  void resumeActiveJobs(currentSession);
 }
 initApp();

@@ -584,6 +584,17 @@ def test_workspace_saves_are_skipped_until_recovery_completes():
 """)
 
 
+def test_init_reconnects_active_jobs_after_reload():
+    """初始化后必须重新订阅活动作业，避免刷新后丢失轮询。"""
+    source = APP_JS_PATH.read_text(encoding="utf-8")
+    assert "async function resumeActiveJobs(taskId)" in source
+    assert "['PENDING', 'RUNNING', 'CANCEL_REQUESTED'].includes(job.status)" in source
+    assert "void resumeActiveJobs(currentSession)" in source
+    assert "inner.dataset.historyBuilt = '';" in source
+    init_tail = source[source.index("workspacePersistenceReady = true"):]
+    assert "void resumeActiveJobs(currentSession)" in init_tail
+
+
 def test_degraded_recovery_never_writes_back_to_server():
     """断网导致的降级本地状态绝不能覆盖服务端恢复位置。"""
     _run_workspace_harness(r"""
