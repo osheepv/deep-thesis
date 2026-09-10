@@ -61,7 +61,7 @@ def main(argv=None):
                 time.sleep(0.2)
         else:
             raise RuntimeError("API startup timed out")
-        ui = subprocess.Popen([sys.executable, "-m", "http.server", str(args.ui_port), "--bind", "127.0.0.1",
+        ui = subprocess.Popen([sys.executable, str(root / "scripts" / "serve_preview_ui.py"), "--port", str(args.ui_port),
                                "--directory", str(root / "ui")], cwd=root, env=environment)
         processes.append(ui)
         print(f"Deep Thesis: http://127.0.0.1:{args.ui_port}/?apiBase=http://127.0.0.1:{args.api_port}", flush=True)

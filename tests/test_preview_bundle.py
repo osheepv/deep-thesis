@@ -106,7 +106,16 @@ runpy.run_path(sys.argv[0], run_name='__main__')
                     time.sleep(0.2)
                 else:
                     pytest.fail("Preview did not become ready: " + (tmp_path / "preview.log").read_text(encoding="utf-8"))
-                assert client.get(f"http://127.0.0.1:{ui_port}/js/app.js").status_code == 200
+                assert response.headers["cache-control"] == "no-store"
+                script_url = f"http://127.0.0.1:{ui_port}/js/app.js"
+                script = client.get(script_url)
+                assert script.status_code == 200
+                assert script.headers["cache-control"] == "no-store"
+                reloaded = client.get(script_url, headers={
+                    "If-Modified-Since": script.headers["last-modified"],
+                })
+                assert reloaded.status_code == 200
+                assert reloaded.content == script.content
                 assert client.get(f"http://127.0.0.1:{api_port}/healthz").json()["data"]["status"] == "UP"
                 result = client.post(f"http://127.0.0.1:{api_port}/api/v1/console/tasks", json={
                     "title": "Preview persistence", "degree": "MASTER", "subject_field": "CS", "session_id": "preview",

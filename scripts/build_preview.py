@@ -11,7 +11,7 @@ import zipfile
 
 
 INCLUDE = ["backend", "ui", "LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md",
-           "README.md", "ROADMAP.md", "scripts/run_preview.py", "scripts/verify_installed_runtime.py", "docs/本地预览指南.md",
+           "README.md", "ROADMAP.md", "scripts/run_preview.py", "scripts/serve_preview_ui.py", "scripts/verify_installed_runtime.py", "docs/本地预览指南.md",
            "docs/数据备份与恢复指南.md", "docs/存储迁移指南.md", "docs/独立Worker部署指南.md"]
 
 
