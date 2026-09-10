@@ -151,6 +151,25 @@ def _advance_to_ring6(monkeypatch) -> tuple[MainOrchestration, _FlowExecutor, st
     return orchestration, fake, task_id
 
 
+def test_pending_reviews_and_outline_are_available_after_reloading_progress(monkeypatch):
+    original_confirm = MainOrchestration.confirm_ring
+    reviewed = {}
+
+    def confirm_after_reload(self, task_id, ring_no, *args, **kwargs):
+        if ring_no in {2, 4, 5}:
+            progress = self.progress(task_id).data
+            assert progress["phase_state"] == "WAITING_APPROVAL"
+            reviewed[ring_no] = progress["author_decision_payload"]
+        return original_confirm(self, task_id, ring_no, *args, **kwargs)
+
+    monkeypatch.setattr(MainOrchestration, "confirm_ring", confirm_after_reload)
+    orchestration, _, task_id = _advance_to_ring6(monkeypatch)
+    assert reviewed[2]["novelty_level"] == "HIGH"
+    assert reviewed[4]["verdict"] == "通过"
+    assert reviewed[5]["chapters"][0]["title"] == "绪论"
+    assert "author_decision_payload" not in orchestration.progress(task_id).data
+
+
 def test_author_candidate_selection_is_required_and_projected(monkeypatch):
     fake = _FlowExecutor()
     monkeypatch.setattr(

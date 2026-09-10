@@ -2494,7 +2494,7 @@ function buildHistoryFromProgress(prog) {
   });
   const cur = prog.current_ring_no;
   if (prog.phase_state === 'WAITING_APPROVAL') {
-    if ([1, 3, 8].includes(cur) && prog.author_decision_payload) {
+    if ([1, 2, 3, 4, 5, 8].includes(cur) && prog.author_decision_payload) {
       renderRingResult(cur, prog.author_decision_payload);
     } else {
       appendAIMsg(`<p style="font-size:13px;">环${cur}（${RING_NAMES[cur] || ''}）已通过自动验收，等待你的确认。</p>`, '待确认');

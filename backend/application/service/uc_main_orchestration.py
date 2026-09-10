@@ -1851,7 +1851,7 @@ class MainOrchestration(EvidenceServiceMixin, ArtifactHelpersMixin, ResearchServ
             data["author_decision_blocker"] = decision_blocker
             if (
                 data.get("phase_state") == PhaseState.WAITING_APPROVAL.value
-                and data.get("current_ring_no") in {1, 3, 8}
+                and data.get("current_ring_no") in {1, 2, 3, 4, 5, 8}
             ):
                 data["author_decision_payload"] = getattr(
                     rec, f"ring{data['current_ring_no']}"
