@@ -819,6 +819,7 @@ class MainOrchestration(EvidenceServiceMixin, ArtifactHelpersMixin, ResearchServ
             "items": rec.ring3.get("items", []) if rec.ring3 else [],
             "summary": rec.ring3.get("summary", "") if rec.ring3 else "文献池为空",
             "curated": single_candidate,
+            "included_indexes": rec.ring3["included_indexes"],
         }, msg="环3文献调研完成" if rec.ring3 else "环3文献检索失败/禁用，池为空")
 
     def curate_literature(

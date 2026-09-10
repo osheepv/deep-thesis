@@ -236,6 +236,8 @@ def test_empty_literature_retry_reads_newly_uploaded_material(monkeypatch, tmp_p
     knowledge.save_document("retry-kb", "fixture.txt", b"test fixture", metadata={"kind": "literature"})
     result = orchestration.run_ring3(task_id)
     assert result.data["total"] == 1
+    assert result.data["curated"] is True
+    assert result.data["included_indexes"] == [0]
     assert result.data["items"][0]["reliability"] == "uncertain"
     assert orchestration.progress(task_id).data["phase_state"] == "WAITING_APPROVAL"
 
