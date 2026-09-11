@@ -1,6 +1,6 @@
 # Windows 可安装测试版
 
-目标是 Windows 10/11 x64 用户下载安装后直接打开工作台，无需安装 Python 或执行命令。`0.1.0-beta.1` 安装器已经构建，并在临时全新目录完成安装、启动和退出验收：安装器大小约595MiB，内置 Python 3.13、CPU PyTorch 与本地检索依赖；安装后的程序没有从源码目录导入模块，API 和界面能正常启动，关闭启动窗口后两个服务都已回收。该版本仍是预发布测试版，尚未签名。
+目标是 Windows 10/11 x64 用户下载安装后直接打开工作台，无需安装 Python 或执行命令。`0.1.0-beta.1` 安装器已经构建并发布到 GitHub Releases，并在临时全新目录完成安装、启动和退出验收：安装器大小约595MiB，内置 Python 3.13、CPU PyTorch 与本地检索依赖；安装后的程序没有从源码目录导入模块，API 和界面能正常启动，关闭启动窗口后两个服务都已回收。该版本仍是预发布测试版，尚未签名。
 
 ## 使用方式
 
@@ -31,6 +31,6 @@ python scripts/build_windows.py --output-dir C:\Builds\DeepThesis-beta1 --python
 - 重复启动与异常关闭后的服务回收；旧版本升级后数据保留及备份恢复。
 - 模型配置引导、密钥存储与日志脱敏；首次文献检索模型下载的网络提示。
 - 真实联网完整十环浏览器验收、待审长稿和规范引用/交叉引用交付。
-- 签名与第三方许可证复核、用户说明、GitHub预发布安装附件与反馈入口。
+- 签名与第三方许可证复核、用户说明、后续版本的安装附件与反馈入口维护。
 
 构建方案参考：[Python官方嵌入式发行说明](https://docs.python.org/3.13/using/windows.html#the-embeddable-package)、[Inno Setup当前用户安装](https://jrsoftware.org/ishelp/topic_setup_privilegesrequired.htm)。
