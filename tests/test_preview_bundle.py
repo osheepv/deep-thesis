@@ -67,7 +67,8 @@ def test_tracked_runtime_database_blocks_bundle(repository, tmp_path):
     assert not output.exists()
 
 
-def test_launcher_serves_ui_and_api_then_stops_both(tmp_path):
+@pytest.mark.parametrize("desktop_stop", [False, True])
+def test_launcher_serves_ui_and_api_then_stops_both(tmp_path, desktop_stop):
     listeners = [socket.socket(), socket.socket()]
     try:
         for listener in listeners:
@@ -88,9 +89,12 @@ sys.argv = sys.argv[1:]
 runpy.run_path(sys.argv[0], run_name='__main__')
 """
     data = tmp_path / "persistent"
+    ready = tmp_path / "ready.json"
+    stop = tmp_path / "stop"
     with (tmp_path / "preview.log").open("w", encoding="utf-8") as log:
         process = subprocess.Popen([sys.executable, "-c", driver, str(ROOT / "scripts" / "run_preview.py"),
-                                    "--data-dir", str(data), "--api-port", str(api_port), "--ui-port", str(ui_port)],
+                                    "--data-dir", str(data), "--api-port", str(api_port), "--ui-port", str(ui_port),
+                                    "--ready-file", str(ready), "--stop-file", str(stop)],
                                    cwd=tmp_path, env=environment, stdin=subprocess.PIPE, stdout=log, stderr=log, text=True)
         with httpx.Client(timeout=1, trust_env=False) as client:
             try:
@@ -121,7 +125,15 @@ runpy.run_path(sys.argv[0], run_name='__main__')
                     "title": "Preview persistence", "degree": "MASTER", "subject_field": "CS", "session_id": "preview",
                 }).json()
                 assert result["code"] == 0
+                deadline = time.monotonic() + 5
+                while not ready.exists() and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                assert json.loads(ready.read_text(encoding="utf-8"))["url"] == (
+                    f"http://127.0.0.1:{ui_port}/?apiBase=http://127.0.0.1:{api_port}"
+                )
             finally:
+                if desktop_stop:
+                    stop.write_text("stop", encoding="utf-8")
                 process.wait(timeout=30)
             assert process.returncode == 0
             assert (data / "task_store.db").is_file()
