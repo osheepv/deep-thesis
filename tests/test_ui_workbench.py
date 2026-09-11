@@ -595,6 +595,66 @@ def test_init_reconnects_active_jobs_after_reload():
     assert "void resumeActiveJobs(currentSession)" in init_tail
 
 
+@pytest.mark.parametrize("scenario", ["empty", "success", "failure", "switch"])
+def test_recovered_job_releases_button_and_preserves_selected_task(scenario):
+    script = r"""
+const fs = require('fs');
+const assert = require('assert/strict');
+const source = fs.readFileSync(process.argv[1], 'utf8');
+const scenario = process.argv[2];
+let currentSession = 'T1', activeJobRecoveryTask = '';
+const RING_NAMES = {1: 'Topic'};
+const button = {disabled: false}, label = {textContent: ''};
+const inner = {dataset: {historyBuilt: '1'}};
+const document = {getElementById: id => ({
+  'run-cur-ring': button, 'run-btn-label': label,
+  'chat-flow': {querySelector: () => inner}
+}[id])};
+const progress = {current_ring_no: 1, rings: [], can_confirm: false};
+let polls = 0, details = 0, announcements = 0;
+async function apiListJobs() { return {code: 0, data: scenario === 'empty' || scenario === 'switch' ? [] :
+  [{job_id: 'J1', status: 'RUNNING', operation: 'ring.execute', payload: {ring_no: 1}}]}; }
+async function apiSessionProgress() {
+  if (scenario === 'switch') {
+    currentSession = 'T2';
+    button.disabled = true;
+    label.textContent = 'T2 pending approval';
+  }
+  return progress;
+}
+async function waitForJob() {
+  polls++;
+  assert.equal(button.disabled, true, 'disable while polling');
+  return {code: scenario === 'failure' ? 1 : 0, msg: 'job failed'};
+}
+async function loadSessionDetail() { details++; }
+async function loadSessions() {}
+async function refreshVisibleResumeSummary() {}
+function announceWorkspace() { announcements++; }
+eval(source.slice(source.indexOf('function updateRunBtn(prog)'), source.indexOf('function handleNewSession()')));
+eval(source.slice(source.indexOf('async function resumeActiveJobs(taskId)'), source.indexOf('async function loadJobsPanel(')));
+(async () => {
+  await resumeActiveJobs('T1');
+  assert.equal(activeJobRecoveryTask, '', 'release recovery marker');
+  if (scenario === 'switch') {
+    assert.equal(label.textContent, 'T2 pending approval', 'do not render stale task progress');
+    assert.equal(button.disabled, true);
+  } else {
+    assert.equal(button.disabled, false, 'restore executable button after recovery');
+    assert.equal(polls, scenario === 'empty' ? 0 : 1);
+    assert.equal(details, polls);
+    if (polls) assert.equal(inner.dataset.historyBuilt, '');
+    assert.equal(announcements, scenario === 'failure' ? 1 : 0);
+  }
+})().catch(error => { console.error(error); process.exitCode = 1; });
+"""
+    completed = subprocess.run(
+        ["node", "-e", script, str(APP_JS_PATH), scenario],
+        capture_output=True, text=True, encoding="utf-8", timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
 def test_degraded_recovery_never_writes_back_to_server():
     """断网导致的降级本地状态绝不能覆盖服务端恢复位置。"""
     _run_workspace_harness(r"""

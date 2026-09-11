@@ -3135,11 +3135,11 @@ async function resumeActiveJobs(taskId) {
       }
     }
   } finally {
+    if (activeJobRecoveryTask === taskId) activeJobRecoveryTask = '';
     if (taskId === currentSession) {
       const latest = await apiSessionProgress(taskId);
-      updateRunBtn(latest);
+      if (taskId === currentSession) updateRunBtn(latest);
     }
-    if (activeJobRecoveryTask === taskId) activeJobRecoveryTask = '';
   }
 }
 
